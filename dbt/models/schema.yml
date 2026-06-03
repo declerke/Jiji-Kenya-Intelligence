@@ -1,0 +1,124 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: listings
+        description: "Raw listings ingested from Jiji Kenya CSV staging files"
+        columns:
+          - name: listing_id
+            description: "Unique identifier extracted from URL slug or UUID"
+          - name: title
+            description: "Listing title as shown on Jiji"
+          - name: price_kes
+            description: "Asking price in Kenyan Shillings (NULL = Negotiable/unknown)"
+          - name: location
+            description: "City or area as provided by seller"
+          - name: category
+            description: "Listing category: cars, phones, or property"
+          - name: condition
+            description: "Item condition: New, Used, or N/A"
+          - name: listing_url
+            description: "Full URL to the Jiji listing page"
+          - name: description_snippet
+            description: "First 200 characters of listing description"
+          - name: scraped_at
+            description: "ISO timestamp of when the listing was scraped"
+          - name: scrape_date
+            description: "Date portion of scrape timestamp (partition key)"
+
+models:
+  - name: stg_jiji_listings
+    description: "Cleaned and deduplicated Jiji Kenya listings"
+    columns:
+      - name: listing_id
+        description: "Listing identifier"
+        tests:
+          - not_null
+      - name: title
+        description: "Listing title (trimmed)"
+        tests:
+          - not_null
+      - name: category
+        description: "Listing category (lowercase)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cars', 'phones', 'property']
+      - name: scrape_date
+        description: "Date the listing was scraped"
+        tests:
+          - not_null
+      - name: listing_url
+        description: "Full listing URL — unique per scrape_date after deduplication"
+        tests:
+          - not_null
+
+  - name: fct_listings
+    description: "Unified fact table with price tiers for all categories"
+    columns:
+      - name: listing_id
+        description: "Listing identifier"
+        tests:
+          - not_null
+      - name: title
+        description: "Listing title"
+        tests:
+          - not_null
+      - name: category
+        description: "Listing category"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cars', 'phones', 'property']
+      - name: scrape_date
+        description: "Date the listing was scraped"
+        tests:
+          - not_null
+      - name: price_category
+        description: "Price tier: budget / mid / premium / unknown"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['budget', 'mid', 'premium', 'unknown']
+
+  - name: mart_price_by_location
+    description: "Median and average prices per category and city (min 5 listings)"
+    columns:
+      - name: category
+        tests:
+          - not_null
+      - name: location
+        tests:
+          - not_null
+      - name: listing_count
+        tests:
+          - not_null
+
+  - name: mart_category_volume
+    description: "Daily listing volumes, price stats, and new/used ratios per category"
+    columns:
+      - name: category
+        tests:
+          - not_null
+      - name: scrape_date
+        tests:
+          - not_null
+      - name: listing_count
+        tests:
+          - not_null
+
+  - name: mart_cars_by_make
+    description: "Top 20 car makes by listing count with price distributions"
+    columns:
+      - name: make
+        tests:
+          - not_null
+      - name: listing_count
+        tests:
+          - not_null
+      - name: rank
+        tests:
+          - not_null
+          - unique

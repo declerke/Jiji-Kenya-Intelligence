@@ -1,0 +1,7 @@
+jiji_kenya:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: /data/jiji.duckdb
+      threads: 1

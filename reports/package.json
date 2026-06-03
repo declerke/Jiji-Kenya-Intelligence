@@ -1,0 +1,16 @@
+{
+  "name": "jiji-kenya-intelligence-reports",
+  "version": "1.0.0",
+  "description": "Evidence.dev analytics reports for Jiji Kenya classifieds data",
+  "scripts": {
+    "dev": "evidence dev",
+    "build": "evidence build",
+    "preview": "evidence preview"
+  },
+  "dependencies": {
+    "@evidence-dev/evidence": "^35.0.0",
+    "@evidence-dev/duckdb": "^1.0.0"
+  },
+  "devDependencies": {},
+  "private": true
+}

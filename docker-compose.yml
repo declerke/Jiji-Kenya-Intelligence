@@ -1,0 +1,177 @@
+---
+# Jiji Kenya Intelligence — Docker Compose
+# Ports used: 8081 (Airflow API/UI), 5437 (Postgres), 3001 (Evidence.dev)
+# Airflow 3.0 uses 'api-server' (not 'webserver') and SimpleAuthManager
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # Airflow 3.0 SimpleAuthManager (built-in, no provider install needed)
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: 'admin:admin'
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: 'true'
+    # Airflow 3.0 LocalExecutor needs the execution API server URL
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-webserver:8080/execution/'
+    # JWT signing key must be IDENTICAL on all containers
+    AIRFLOW__API_AUTH__JWT_SECRET: 'jiji-kenya-jwt-signing-secret-2024-shared'
+    AIRFLOW__CORE__INTERNAL_API_SECRET_KEY: 'jiji-kenya-internal-secret-2024-shared'
+    AIRFLOW__CORE__FERNET_KEY: 'hLDCCKrMkWHJiCijb28aGh2iSILHvQWnuYRLuFKjL54='
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'jiji-kenya-secret-key-2024'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
+    STAGING_DIR: /opt/airflow/staging
+    _PIP_ADDITIONAL_REQUIREMENTS: ''
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scraper:/opt/airflow/scraper
+    - ./dbt:/opt/airflow/dbt
+    - ./tests:/opt/airflow/tests
+    - airflow_logs:/opt/airflow/logs
+    - staging_data:/opt/airflow/staging
+    - duckdb_data:/data
+  depends_on:
+    postgres-airflow:
+      condition: service_healthy
+  networks:
+    - jiji-net
+
+services:
+
+  # ─── Airflow Metadata Database ────────────────────────────────────────────
+  postgres-airflow:
+    image: postgres:15
+    container_name: jiji-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    networks:
+      - jiji-net
+    restart: unless-stopped
+
+  # ─── Volume Permission Fixer (runs as root before airflow-init) ───────────
+  airflow-volume-permissions:
+    image: apache/airflow:3.0.0
+    container_name: jiji-airflow-perms
+    user: "0:0"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/staging /data
+        chown -R 50000:0 /opt/airflow/staging /data
+        chmod -R 777 /opt/airflow/staging /data
+        echo "Permissions set"
+    volumes:
+      - staging_data:/opt/airflow/staging
+      - duckdb_data:/data
+    networks:
+      - jiji-net
+    restart: "no"
+
+  # ─── Airflow Init Container ───────────────────────────────────────────────
+  # Airflow 3.0: uses 'db migrate' (not 'db init')
+  airflow-init:
+    <<: *airflow-common
+    container_name: jiji-airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        echo "Airflow DB migrated"
+        echo "Airflow init complete"
+    restart: "no"
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+      airflow-volume-permissions:
+        condition: service_completed_successfully
+
+  # ─── Airflow DAG Processor (Airflow 3.0 — required separate service) ─────
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: jiji-airflow-dag-processor
+    command: dag-processor
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ─── Airflow Scheduler ────────────────────────────────────────────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: jiji-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ─── Airflow API Server (Airflow 3.0 replaces webserver) ──────────────────
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: jiji-airflow-webserver
+    command: api-server --workers 1
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ─── Evidence.dev Analytics Dashboard ────────────────────────────────────
+  evidence-dev:
+    image: node:20-alpine
+    container_name: jiji-evidence
+    working_dir: /app
+    volumes:
+      - ./reports:/app
+      - duckdb_data:/data
+      - evidence_node_modules:/app/node_modules
+    ports:
+      - "3001:3000"
+    command: sh -c "npm install --legacy-peer-deps && npm run dev -- --host 0.0.0.0 --port 3000"
+    environment:
+      NODE_ENV: development
+    networks:
+      - jiji-net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  airflow_logs:
+  staging_data:
+  duckdb_data:
+  evidence_node_modules:
+
+networks:
+  jiji-net:
+    driver: bridge

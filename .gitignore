@@ -1,0 +1,72 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+*.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# DuckDB data files
+*.duckdb
+*.duckdb.wal
+data/
+
+# Staging CSVs
+staging/
+
+# Evidence.dev build output
+reports/.evidence-queries/
+reports/build/
+reports/.svelte-kit/
+reports/node_modules/
+reports/.evidence/
+
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+standalone_admin_password.txt
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Personal notes — never push
+projectsummary.md

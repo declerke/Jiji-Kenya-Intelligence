@@ -1,0 +1,24 @@
+# Jiji Kenya Intelligence — Python dependencies
+# Local dev: uv venv .venv && uv pip install -r requirements.txt
+# Docker: pip install --user (see Dockerfile)
+
+# Web scraping
+playwright==1.44.0
+beautifulsoup4==4.12.3
+requests==2.32.3
+lxml==5.2.2
+
+# Data processing
+duckdb==1.0.0
+pandas==2.2.2
+
+# dbt (dbt-duckdb 1.8.1 requires duckdb != 0.10.3; use 1.0.0)
+dbt-duckdb==1.8.1
+dbt-core==1.8.1
+
+# Testing
+pytest==8.2.2
+pytest-asyncio==0.23.7
+
+# Utilities
+python-dotenv==1.0.1
