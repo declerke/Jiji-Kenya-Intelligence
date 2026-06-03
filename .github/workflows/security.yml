@@ -59,7 +59,7 @@ jobs:
 
       - name: Install Evidence.dev dependencies
         working-directory: reports
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Run npm audit
         working-directory: reports
