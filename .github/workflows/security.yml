@@ -30,11 +30,12 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit on installed packages
-        run: pip-audit --local --output=json -o pip-audit-results.json || true
+        # GHSA-w75w-9qv4-j5xj: dbt-common path traversal CVE — fix requires dbt-core 1.34+ upgrade
+        run: pip-audit --local --output=json -o pip-audit-results.json --ignore-vuln GHSA-w75w-9qv4-j5xj || true
 
       - name: Display audit results
         run: |
-          pip-audit --local || echo "Vulnerabilities found — review report above"
+          pip-audit --local --ignore-vuln GHSA-w75w-9qv4-j5xj || echo "Vulnerabilities found — review report above"
 
       - name: Upload audit results
         uses: actions/upload-artifact@v4
