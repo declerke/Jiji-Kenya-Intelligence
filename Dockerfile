@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir \
     pandas==2.2.2 \
     lxml==5.2.2 \
     requests==2.32.3 \
-    pytest==8.2.2 \
+    pytest==9.0.3 \
     pytest-asyncio==0.23.7
 
 # Install Playwright Chromium browser (browser binary only, no system deps needed
