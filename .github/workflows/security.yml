@@ -23,15 +23,18 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install project dependencies
+        run: pip install -r requirements.txt
+
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Run pip-audit
-        run: pip-audit -r requirements.txt --output=json -o pip-audit-results.json || true
+      - name: Run pip-audit on installed packages
+        run: pip-audit --local --output=json -o pip-audit-results.json || true
 
       - name: Display audit results
         run: |
-          pip-audit -r requirements.txt || echo "Vulnerabilities found — review report above"
+          pip-audit --local || echo "Vulnerabilities found — review report above"
 
       - name: Upload audit results
         uses: actions/upload-artifact@v4
