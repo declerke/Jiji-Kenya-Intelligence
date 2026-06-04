@@ -60,7 +60,7 @@ jobs:
 
       - name: Install Evidence.dev dependencies
         working-directory: reports
-        run: npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps --ignore-scripts && npm rebuild duckdb
 
       - name: Run npm audit
         working-directory: reports
