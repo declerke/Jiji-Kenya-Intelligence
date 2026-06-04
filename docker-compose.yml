@@ -150,16 +150,18 @@ services:
 
   # ─── Evidence.dev Analytics Dashboard ────────────────────────────────────
   evidence-dev:
-    image: node:20-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.evidence
     container_name: jiji-evidence
     working_dir: /app
     volumes:
-      - ./reports:/app
+      - ./reports/pages:/app/pages
       - duckdb_data:/data
-      - evidence_node_modules:/app/node_modules
+      - duckdb_data:/app/sources/jiji/data
     ports:
       - "3001:3000"
-    command: sh -c "npm install --legacy-peer-deps && npm run dev -- --host 0.0.0.0 --port 3000"
+    command: sh -c "timeout 120 node_modules/.bin/evidence sources || true; npm run dev -- --host 0.0.0.0 --port 3000"
     environment:
       NODE_ENV: development
     networks:
@@ -171,7 +173,6 @@ volumes:
   airflow_logs:
   staging_data:
   duckdb_data:
-  evidence_node_modules:
 
 networks:
   jiji-net:

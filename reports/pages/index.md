@@ -13,7 +13,7 @@ SELECT
     ROUND(AVG(price_kes), 0)                    AS avg_price_kes,
     ROUND(MEDIAN(price_kes), 0)                 AS median_price_kes,
     MAX(scrape_date)::VARCHAR                   AS latest_scrape
-FROM marts.fct_listings
+FROM jiji.fct_listings
 GROUP BY category
 ORDER BY listing_count DESC
 ```
@@ -51,7 +51,7 @@ SELECT
     scrape_date::VARCHAR AS scrape_date,
     category,
     listing_count
-FROM marts.mart_category_volume
+FROM jiji.mart_category_volume
 ORDER BY scrape_date DESC, category
 LIMIT 30
 ```
@@ -77,7 +77,7 @@ SELECT
     COUNT(DISTINCT location)         AS cities,
     MAX(scrape_date)::VARCHAR        AS latest_scrape_date,
     MIN(scrape_date)::VARCHAR        AS first_scrape_date
-FROM marts.fct_listings
+FROM jiji.fct_listings
 ```
 
 ## Pipeline Stats
@@ -107,7 +107,7 @@ SELECT
     category,
     price_category,
     COUNT(*) AS count
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE price_category != 'unknown'
 GROUP BY category, price_category
 ORDER BY category, count DESC

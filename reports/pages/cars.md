@@ -13,7 +13,7 @@ SELECT
     ROUND(MEDIAN(price_kes), 0)          AS median_price_kes,
     MIN(price_kes)                       AS min_price_kes,
     MAX(price_kes)                       AS max_price_kes
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'cars'
   AND price_kes IS NOT NULL
 ```
@@ -45,7 +45,7 @@ SELECT
         WHEN price_kes < 5000000  THEN 5
         ELSE 6
     END AS sort_order
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'cars'
   AND price_kes IS NOT NULL
 GROUP BY price_range, sort_order
@@ -73,7 +73,7 @@ SELECT
     ROUND(avg_price_kes, 0) AS avg_price_kes,
     ROUND(median_price_kes, 0) AS median_price_kes,
     rank
-FROM marts.mart_cars_by_make
+FROM jiji.mart_cars_by_make
 ORDER BY rank
 LIMIT 20
 ```
@@ -110,7 +110,7 @@ SELECT
     listing_count,
     ROUND(median_price_kes, 0) AS median_price_kes,
     ROUND(avg_price_kes, 0) AS avg_price_kes
-FROM marts.mart_price_by_location
+FROM jiji.mart_price_by_location
 WHERE category = 'cars'
 ORDER BY listing_count DESC
 LIMIT 10
@@ -141,7 +141,7 @@ LIMIT 10
 SELECT
     price_category,
     COUNT(*) AS listing_count
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'cars'
 GROUP BY price_category
 ORDER BY listing_count DESC

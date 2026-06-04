@@ -1,0 +1,4 @@
+name: jiji
+type: duckdb
+options:
+  filename: /data/jiji.duckdb

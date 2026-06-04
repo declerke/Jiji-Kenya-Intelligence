@@ -13,7 +13,7 @@ SELECT
     ROUND(MEDIAN(price_kes), 0)          AS median_price_kes,
     COUNT(CASE WHEN UPPER(condition) = 'NEW'  THEN 1 END) AS new_count,
     COUNT(CASE WHEN UPPER(condition) = 'USED' THEN 1 END) AS used_count
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'phones'
 ```
 
@@ -49,7 +49,7 @@ SELECT
     ROUND(MIN(price_kes), 0)            AS min_price_kes,
     ROUND(MEDIAN(price_kes), 0)         AS median_price_kes,
     ROUND(MAX(price_kes), 0)            AS max_price_kes
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'phones'
   AND price_kes IS NOT NULL
 GROUP BY brand
@@ -83,7 +83,7 @@ SELECT
     condition,
     COUNT(*) AS listing_count,
     ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'phones'
   AND condition != 'N/A'
 GROUP BY condition
@@ -109,7 +109,7 @@ SELECT
     location,
     listing_count,
     ROUND(median_price_kes, 0) AS median_price_kes
-FROM marts.mart_price_by_location
+FROM jiji.mart_price_by_location
 WHERE category = 'phones'
 ORDER BY listing_count DESC
 LIMIT 10
@@ -134,7 +134,7 @@ SELECT
     price_category,
     COUNT(*) AS listing_count,
     ROUND(AVG(price_kes), 0) AS avg_price_kes
-FROM marts.fct_listings
+FROM jiji.fct_listings
 WHERE category = 'phones'
 GROUP BY price_category
 ORDER BY listing_count DESC
