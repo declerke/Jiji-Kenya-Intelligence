@@ -26,6 +26,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__WEBSERVER__SECRET_KEY: 'jiji-kenya-secret-key-2024'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
     STAGING_DIR: /opt/airflow/staging
+    PYTHONPATH: /opt/airflow
     _PIP_ADDITIONAL_REQUIREMENTS: ''
   volumes:
     - ./dags:/opt/airflow/dags

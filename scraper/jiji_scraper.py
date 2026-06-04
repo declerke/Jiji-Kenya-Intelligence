@@ -19,7 +19,7 @@ import random
 import re
 import time
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -119,7 +119,7 @@ def _parse_devalued_adverts(html: str, category: str) -> list[dict]:
     Returns list of listing dicts.
     """
     soup = BeautifulSoup(html, "html.parser")
-    scraped_at = datetime.utcnow().isoformat()
+    scraped_at = datetime.now(timezone.utc).isoformat()
     scrape_date = date.today().isoformat()
 
     devalued_data = None
@@ -183,13 +183,10 @@ def _advert_to_listing(advert: dict, category: str, scraped_at: str, scrape_date
 
     # URL
     rel_url = advert.get("url", "")
-    if isinstance(rel_url, str):
-        if rel_url.startswith("/"):
-            listing_url = f"https://jiji.co.ke{rel_url.split('?')[0]}"
-        elif rel_url.startswith("http"):
-            listing_url = rel_url.split("?")[0]
-        else:
-            listing_url = ""
+    if isinstance(rel_url, str) and rel_url.startswith("/"):
+        listing_url = f"https://jiji.co.ke{rel_url.split('?')[0]}"
+    elif isinstance(rel_url, str) and rel_url.startswith("http"):
+        listing_url = rel_url.split("?")[0]
     else:
         listing_url = ""
 
@@ -232,11 +229,9 @@ def _advert_to_listing(advert: dict, category: str, scraped_at: str, scrape_date
 # ---------------------------------------------------------------------------
 
 
-def _fetch_with_requests(url: str) -> Optional[str]:
-    """Fetch URL using requests and return raw HTML string or None."""
+def _fetch_with_requests(url: str, session: requests.Session) -> Optional[str]:
+    """Fetch URL using an existing requests session and return raw HTML or None."""
     try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
         resp = session.get(url, timeout=20)
         resp.raise_for_status()
         return resp.text
@@ -300,12 +295,12 @@ async def _fetch_with_playwright(url: str) -> Optional[str]:
         return None
 
 
-def _fetch_page(url: str) -> Optional[str]:
+def _fetch_page(url: str, session: requests.Session) -> Optional[str]:
     """
     Try requests first; fall back to Playwright if devalued JSON is missing.
     Returns raw HTML string.
     """
-    html = _fetch_with_requests(url)
+    html = _fetch_with_requests(url, session)
 
     if html and "adverts_list" in html:
         logger.info("requests fetch with devalued JSON succeeded for %s", url)
@@ -325,13 +320,18 @@ def _fetch_page(url: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def scrape_category(category: str, pages: int = 3) -> list[dict]:
+def scrape_category(
+    category: str,
+    pages: int = 3,
+    session: Optional[requests.Session] = None,
+) -> list[dict]:
     """
     Scrape a Jiji Kenya category across multiple pages.
 
     Args:
         category: One of 'cars', 'phones', 'property'
         pages: Number of pages to scrape (minimum 3)
+        session: Optional shared requests.Session; creates one if not provided.
 
     Returns:
         List of listing dicts
@@ -344,15 +344,17 @@ def scrape_category(category: str, pages: int = 3) -> list[dict]:
     all_listings: list[dict] = []
     seen_ids: set[str] = set()
 
+    _session = session
+    if _session is None:
+        _session = requests.Session()
+        _session.headers.update(HEADERS)
+
     for page_num in range(1, pages + 1):
-        if page_num == 1:
-            url = base_url
-        else:
-            url = f"{base_url}?page={page_num}"
+        url = base_url if page_num == 1 else f"{base_url}?page={page_num}"
 
         logger.info("Scraping %s page %d: %s", category, page_num, url)
 
-        html = _fetch_page(url)
+        html = _fetch_page(url, _session)
 
         if html is None:
             logger.warning("Failed to fetch page %d for %s — skipping", page_num, category)
@@ -419,7 +421,9 @@ def run_scraper(category: str, pages: int = 3) -> str:
 
     Returns path to the output CSV as a string.
     """
-    listings = scrape_category(category, pages=pages)
+    with requests.Session() as session:
+        session.headers.update(HEADERS)
+        listings = scrape_category(category, pages=pages, session=session)
 
     if not listings:
         logger.warning("No listings scraped for %s — writing empty CSV", category)

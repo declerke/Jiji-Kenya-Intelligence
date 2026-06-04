@@ -44,7 +44,7 @@ RUN pip install --no-cache-dir \
     lxml==5.2.2 \
     requests==2.32.3 \
     pytest==9.0.3 \
-    pytest-asyncio==0.23.7
+    pytest-asyncio>=0.24.0
 
 # Install Playwright Chromium browser (browser binary only, no system deps needed
 # because we installed all apt system deps as root above)

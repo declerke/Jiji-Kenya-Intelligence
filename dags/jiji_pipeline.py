@@ -12,11 +12,9 @@ load_to_duckdb reads all three CSVs sequentially (DuckDB single-writer safe).
 
 from __future__ import annotations
 
-import csv
 import logging
-import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 
 import duckdb
@@ -24,15 +22,8 @@ from airflow.decorators import dag, task
 
 logger = logging.getLogger(__name__)
 
-STAGING_DIR = Path("/opt/airflow/staging")
 DUCKDB_PATH = "/data/jiji.duckdb"
 DBT_DIR = "/opt/airflow/dbt"
-
-CSV_FILES = {
-    "cars": STAGING_DIR / "jiji_cars.csv",
-    "phones": STAGING_DIR / "jiji_phones.csv",
-    "property": STAGING_DIR / "jiji_property.csv",
-}
 
 DEFAULT_ARGS = {
     "owner": "airflow",
@@ -66,45 +57,24 @@ DEFAULT_ARGS = {
 )
 def jiji_pipeline():
 
-    @task()
-    def scrape_cars() -> str:
-        """Scrape Jiji Kenya /cars (3 pages) and save to CSV staging."""
-        import sys
-        sys.path.insert(0, "/opt/airflow")
-        from scraper.jiji_scraper import run_scraper
-        path = run_scraper("cars", pages=3)
-        logger.info("scrape_cars completed: %s", path)
-        return path
-
-    @task()
-    def scrape_phones() -> str:
-        """Scrape Jiji Kenya /phones-tablets (3 pages) and save to CSV staging."""
-        import sys
-        sys.path.insert(0, "/opt/airflow")
-        from scraper.jiji_scraper import run_scraper
-        path = run_scraper("phones", pages=3)
-        logger.info("scrape_phones completed: %s", path)
-        return path
-
-    @task()
-    def scrape_property() -> str:
-        """Scrape Jiji Kenya /houses-apartments-for-rent (3 pages) and save to CSV."""
-        import sys
-        sys.path.insert(0, "/opt/airflow")
-        from scraper.jiji_scraper import run_scraper
-        path = run_scraper("property", pages=3)
-        logger.info("scrape_property completed: %s", path)
-        return path
+    def make_scrape_task(category: str) -> str:
+        @task(task_id=f"scrape_{category}")
+        def _scrape() -> str:
+            from scraper.jiji_scraper import run_scraper
+            path = run_scraper(category, pages=3)
+            logger.info("scrape_%s completed: %s", category, path)
+            return path
+        return _scrape()
 
     @task(trigger_rule="none_failed")
     def load_to_duckdb(cars_csv: str, phones_csv: str, property_csv: str) -> dict:
         """
         Load all three CSV staging files into DuckDB raw.listings table.
-        Runs sequentially (DuckDB single-writer safe).
+        Uses DuckDB native read_csv_auto for efficient bulk load.
+        Each category delete is scoped so a partial re-run is idempotent per category.
         """
         conn = duckdb.connect(DUCKDB_PATH)
 
-        # Create schema and table if not exists
         conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS raw.listings (
@@ -122,11 +92,7 @@ def jiji_pipeline():
             )
         """)
 
-        # Track today's scrape date to avoid duplicates on re-run
-        from datetime import date
         today = str(date.today())
-        conn.execute("DELETE FROM raw.listings WHERE scrape_date = ?", [today])
-
         total_loaded = 0
         counts = {}
 
@@ -141,51 +107,38 @@ def jiji_pipeline():
                 counts[category] = 0
                 continue
 
-            rows_before = total_loaded
+            # Per-category delete — safe for partial re-runs (cars re-run won't wipe phones data)
+            conn.execute(
+                "DELETE FROM raw.listings WHERE scrape_date = ? AND category = ?",
+                [today, category],
+            )
 
-            with open(path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                batch = []
-                for row in reader:
-                    price_val = row.get("price_kes", "")
-                    try:
-                        price_kes = float(price_val) if price_val and price_val.lower() not in ("", "none", "null") else None
-                    except ValueError:
-                        price_kes = None
+            conn.execute(f"""
+                INSERT INTO raw.listings
+                    (listing_id, title, price_kes, location, category,
+                     condition, listing_url, description_snippet, scraped_at, scrape_date)
+                SELECT
+                    listing_id,
+                    title,
+                    TRY_CAST(price_kes AS DOUBLE),
+                    location,
+                    category,
+                    condition,
+                    listing_url,
+                    description_snippet,
+                    scraped_at,
+                    TRY_CAST(scrape_date AS DATE)
+                FROM read_csv_auto('{csv_path}', header=True)
+                WHERE title IS NOT NULL AND title != ''
+            """)
 
-                    try:
-                        scrape_date_val = row.get("scrape_date", today)
-                        scrape_date_val = scrape_date_val if scrape_date_val else today
-                    except Exception:
-                        scrape_date_val = today
-
-                    batch.append((
-                        row.get("listing_id", ""),
-                        row.get("title", ""),
-                        price_kes,
-                        row.get("location", ""),
-                        row.get("category", category),
-                        row.get("condition", "N/A"),
-                        row.get("listing_url", ""),
-                        row.get("description_snippet", ""),
-                        row.get("scraped_at", ""),
-                        scrape_date_val,
-                    ))
-
-            if batch:
-                conn.executemany(
-                    """
-                    INSERT INTO raw.listings
-                        (listing_id, title, price_kes, location, category,
-                         condition, listing_url, description_snippet, scraped_at, scrape_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    batch,
-                )
-                total_loaded += len(batch)
-
-            counts[category] = total_loaded - rows_before
-            logger.info("Loaded %d rows for category=%s", counts[category], category)
+            row_count = conn.execute(
+                "SELECT COUNT(*) FROM raw.listings WHERE scrape_date = ? AND category = ?",
+                [today, category],
+            ).fetchone()[0]
+            counts[category] = row_count
+            total_loaded += row_count
+            logger.info("Loaded %d rows for category=%s", row_count, category)
 
         conn.close()
         logger.info("load_to_duckdb complete: total=%d rows | breakdown=%s", total_loaded, counts)
@@ -225,37 +178,32 @@ def jiji_pipeline():
     @task()
     def log_summary(load_result: dict, dbt_test_output: str) -> None:
         """Log pipeline summary statistics."""
+        # Category breakdown comes from load_result XCom — no DB re-query needed.
+        # Only mart_rows requires a DuckDB read (populated by dbt, not the load step).
         conn = duckdb.connect(DUCKDB_PATH)
-
-        category_counts = conn.execute(
-            "SELECT category, COUNT(*) as cnt FROM raw.listings GROUP BY category ORDER BY category"
-        ).fetchall()
-
         try:
             mart_rows = conn.execute("SELECT COUNT(*) FROM marts.fct_listings").fetchone()[0]
         except Exception:
             mart_rows = 0
-
         conn.close()
 
         logger.info("=" * 60)
         logger.info("JIJI KENYA PIPELINE SUMMARY")
         logger.info("=" * 60)
         logger.info("Raw listings loaded: %d", load_result.get("total", 0))
-        for cat, count in category_counts:
+        for cat, count in sorted(load_result.get("by_category", {}).items()):
             logger.info("  %-12s : %d listings", cat, count)
         logger.info("Mart rows (fct_listings): %d", mart_rows)
         logger.info("=" * 60)
 
-        # Parse dbt test results for pass count
         passed = dbt_test_output.count("PASS")
         failed = dbt_test_output.count("FAIL")
         logger.info("dbt tests: %d passed / %d failed", passed, failed)
 
     # --- Wire up the DAG ---
-    cars_path = scrape_cars()
-    phones_path = scrape_phones()
-    property_path = scrape_property()
+    cars_path = make_scrape_task("cars")
+    phones_path = make_scrape_task("phones")
+    property_path = make_scrape_task("property")
 
     load_result = load_to_duckdb(
         cars_csv=cars_path,
